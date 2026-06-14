@@ -5,16 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Panel del Dueño</title>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:'Segoe UI', sans-serif; background:#0f172a; color:#e2e8f0; display:flex; height:100vh; }
-    .login-container { margin:auto; background:#1e293b; padding:2rem; border-radius:1rem; width:350px; box-shadow:0 25px 50px -12px #000; }
-    .login-container h2 { margin-bottom:1.5rem; }
-    .login-container input, .login-container button { width:100%; padding:0.75rem; margin:0.5rem 0; border-radius:0.5rem; border:none; font-size:1rem; }
-    .login-container input { background:#0f172a; color:white; border:1px solid #334155; }
-    .login-container button { background:#3b82f6; color:white; font-weight:600; cursor:pointer; }
     .panel { display:flex; width:100%; }
     .sidebar { width:250px; background:#1e293b; padding:1rem; border-right:1px solid #334155; overflow-y:auto; }
     .sidebar h3 { margin-bottom:1rem; }
@@ -34,16 +28,7 @@
   </style>
 </head>
 <body>
-  <!-- Login del dueño -->
-  <div id="loginPanel" class="login-container">
-    <h2>Acceso Dueño</h2>
-    <input type="email" id="ownerEmail" placeholder="Correo" value="owner@gmail.com">
-    <input type="password" id="ownerPass" placeholder="Contraseña" value="Owner">
-    <button id="ownerLogin">Iniciar sesión</button>
-  </div>
-
-  <!-- Panel completo -->
-  <div id="dashboard" class="panel hidden">
+  <div id="dashboard" class="panel">
     <div class="sidebar">
       <h3>👥 Usuarios</h3>
       <div id="userList"></div>
@@ -54,6 +39,7 @@
   </div>
 
   <script>
+    // Configuración de Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyD13N4-9MjTrmlPwGP7mves0Exje4v2ACw",
       authDomain: "kahoot-8529e.firebaseapp.com",
@@ -65,48 +51,13 @@
       measurementId: "G-8T4CPC1BQ3"
     };
     firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
     const db = firebase.database();
 
-    const loginPanel = document.getElementById('loginPanel');
-    const dashboard = document.getElementById('dashboard');
-    const ownerLoginBtn = document.getElementById('ownerLogin');
     const userListDiv = document.getElementById('userList');
     const detailArea = document.getElementById('detailArea');
-
     let selectedUserId = null;
 
-    ownerLoginBtn.addEventListener('click', async () => {
-      const email = document.getElementById('ownerEmail').value.trim();
-      const pass = document.getElementById('ownerPass').value;
-      if (email !== 'owner@gmail.com' || pass !== 'Owner') {
-        alert('Credenciales incorrectas');
-        return;
-      }
-      try {
-        await auth.signInWithEmailAndPassword(email, pass);
-      } catch (e) {
-        // Si el usuario no existe, lo creamos automáticamente (solo primera vez)
-        if (e.code === 'auth/user-not-found') {
-          await auth.createUserWithEmailAndPassword(email, pass);
-        } else {
-          alert('Error: ' + e.message);
-        }
-      }
-    });
-
-    auth.onAuthStateChanged(user => {
-      if (user && user.email === 'owner@gmail.com') {
-        loginPanel.classList.add('hidden');
-        dashboard.classList.remove('hidden');
-        cargarUsuarios();
-      } else {
-        loginPanel.classList.remove('hidden');
-        dashboard.classList.add('hidden');
-        if (user) auth.signOut(); // si no es owner, cerrar sesión
-      }
-    });
-
+    // Cargar lista de usuarios al iniciar
     async function cargarUsuarios() {
       const usersSnap = await db.ref('users').once('value');
       const users = usersSnap.val() || {};
@@ -197,6 +148,9 @@
       const snap = await userRef.once('value');
       mostrarDetalle(uid, snap.val());
     };
+
+    // Arrancar directamente
+    cargarUsuarios();
   </script>
 </body>
 </html>
