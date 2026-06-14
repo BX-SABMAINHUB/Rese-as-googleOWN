@@ -3,28 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Panel del Dueño</title>
+  <title>Panel del Dueño - Todos los datos</title>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:'Segoe UI', sans-serif; background:#0f172a; color:#e2e8f0; display:flex; height:100vh; }
     .panel { display:flex; width:100%; }
-    .sidebar { width:250px; background:#1e293b; padding:1rem; border-right:1px solid #334155; overflow-y:auto; }
+    .sidebar { width:260px; background:#1e293b; padding:1rem; border-right:1px solid #334155; overflow-y:auto; }
     .sidebar h3 { margin-bottom:1rem; }
     .user-item { padding:0.6rem 1rem; margin-bottom:0.3rem; background:#0f172a; border-radius:0.5rem; cursor:pointer; transition:0.2s; }
     .user-item:hover { background:#334155; }
-    .user-item.active { background:#3b82f6; }
+    .user-item.active { background:#3b82f6; font-weight:bold; }
     .main { flex:1; padding:2rem; overflow-y:auto; }
     .detail-card { background:#1e293b; padding:1.5rem; border-radius:1rem; margin-bottom:1rem; }
-    .detail-card h3 { margin-bottom:1rem; }
-    .balance-control { display:flex; gap:1rem; align-items:center; margin:1rem 0; }
-    .balance-control input { width:120px; padding:0.5rem; background:#0f172a; color:white; border:1px solid #334155; border-radius:0.5rem; }
-    .review-item { background:#0f172a; padding:0.75rem; margin:0.5rem 0; border-radius:0.5rem; display:flex; justify-content:space-between; align-items:center; }
-    .review-actions button { margin-left:0.5rem; padding:0.4rem 0.8rem; border:none; border-radius:0.3rem; cursor:pointer; font-weight:600; }
+    .detail-card h3 { margin-bottom:0.75rem; display:flex; align-items:center; gap:0.5rem; }
+    .balance-control { display:flex; gap:1rem; align-items:center; margin:1rem 0; flex-wrap:wrap; }
+    .balance-control input { width:130px; padding:0.5rem; background:#0f172a; color:white; border:1px solid #334155; border-radius:0.5rem; }
+    .review-item { background:#0f172a; padding:0.75rem; margin:0.5rem 0; border-radius:0.5rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; }
+    .review-info { flex:1; word-break:break-all; }
+    .review-meta { font-size:0.8rem; color:#94a3b8; margin-top:0.25rem; }
+    .review-actions { display:flex; gap:0.5rem; }
+    .review-actions button { padding:0.4rem 0.8rem; border:none; border-radius:0.3rem; cursor:pointer; font-weight:600; }
     .approve { background:#22c55e; color:white; }
     .reject { background:#ef4444; color:white; }
-    .hidden { display:none !important; }
+    .badge { font-size:0.7rem; padding:0.2rem 0.5rem; border-radius:1rem; background:#475569; }
+    .badge.pending { background:#f59e0b; color:black; }
+    .badge.approved { background:#22c55e; color:white; }
+    .badge.rejected { background:#ef4444; color:white; }
   </style>
 </head>
 <body>
@@ -34,12 +40,12 @@
       <div id="userList"></div>
     </div>
     <div class="main" id="detailArea">
-      <p>Selecciona un usuario para ver detalles.</p>
+      <p>Selecciona un usuario para ver todos sus datos.</p>
     </div>
   </div>
 
   <script>
-    // Configuración de Firebase
+    // Configuración de Firebase (misma que en la app de usuarios)
     const firebaseConfig = {
       apiKey: "AIzaSyD13N4-9MjTrmlPwGP7mves0Exje4v2ACw",
       authDomain: "kahoot-8529e.firebaseapp.com",
@@ -57,15 +63,20 @@
     const detailArea = document.getElementById('detailArea');
     let selectedUserId = null;
 
-    // Cargar lista de usuarios al iniciar
+    // Cargar usuarios reales de Firebase
     async function cargarUsuarios() {
       const usersSnap = await db.ref('users').once('value');
       const users = usersSnap.val() || {};
       userListDiv.innerHTML = '';
+      if (Object.keys(users).length === 0) {
+        userListDiv.innerHTML = '<p style="color:#94a3b8;">No hay usuarios registrados aún.</p>';
+        return;
+      }
       Object.entries(users).forEach(([uid, data]) => {
         const div = document.createElement('div');
         div.className = 'user-item';
-        div.textContent = data.shortId || uid.slice(0,3);
+        // Mostrar shortId real o, si no existe, primeros 3 caracteres del UID
+        div.textContent = data.shortId || uid.substring(0,3);
         div.addEventListener('click', () => seleccionarUsuario(uid, data));
         userListDiv.appendChild(div);
       });
@@ -79,16 +90,31 @@
     }
 
     async function mostrarDetalle(uid, userData) {
+      // Obtener TODAS las reseñas de este usuario
       const reviewsSnap = await db.ref('reviews').orderByChild('userId').equalTo(uid).once('value');
       const reviews = reviewsSnap.val() || {};
-      const pendingReviews = Object.entries(reviews).filter(([key, val]) => val.status === 'pending');
 
+      // Separar por estado
+      const allReviews = Object.entries(reviews).map(([id, rev]) => ({ id, ...rev }));
+      const pendingReviews = allReviews.filter(r => r.status === 'pending');
+      const approvedReviews = allReviews.filter(r => r.status === 'approved');
+      const rejectedReviews = allReviews.filter(r => r.status === 'rejected');
+
+      // Formatear timestamp
+      const formatDate = (ts) => {
+        if (!ts) return 'sin fecha';
+        return new Date(ts).toLocaleString('es-ES');
+      };
+
+      // Construir HTML con todos los datos
       let html = `
         <div class="detail-card">
-          <h3>Usuario: ${userData.shortId || uid.slice(0,3)}</h3>
-          <p>📧 ${userData.email}</p>
-          <p>📝 Reseñas enviadas totales: <strong>${userData.reviewCount || 0}</strong></p>
-          <p>💰 Saldo actual: <strong>${userData.balance.toFixed(2)} €</strong></p>
+          <h3>📋 Datos completos de ${userData.shortId || uid.substring(0,3)}</h3>
+          <p><strong>UID:</strong> ${uid}</p>
+          <p><strong>Email:</strong> ${userData.email || 'No disponible'}</p>
+          <p><strong>ID corto:</strong> ${userData.shortId || 'No asignado'}</p>
+          <p><strong>Saldo actual:</strong> ${(userData.balance || 0).toFixed(2)} €</p>
+          <p><strong>Total reseñas enviadas:</strong> ${userData.reviewCount || 0}</p>
           <div class="balance-control">
             <input type="number" id="amountInput" placeholder="Cantidad" step="0.01">
             <button onclick="modificarSaldo('${uid}', 'add')">➕ Añadir</button>
@@ -96,36 +122,78 @@
             <button onclick="modificarSaldo('${uid}', 'set')">📌 Establecer</button>
           </div>
         </div>
+
         <div class="detail-card">
-          <h3>📋 Reseñas pendientes (${pendingReviews.length})</h3>
-          ${pendingReviews.length === 0 ? '<p>No hay reseñas pendientes</p>' : ''}
-          ${pendingReviews.map(([reviewId, review]) => `
-            <div class="review-item">
-              <span style="word-break:break-all;">🔗 ${review.link}</span>
-              <div class="review-actions">
-                <button class="approve" onclick="aprobarResena('${reviewId}', '${uid}')">✅ Aprobar</button>
-                <button class="reject" onclick="rechazarResena('${reviewId}', '${uid}')">❌ Rechazar</button>
+          <h3>⏳ Reseñas pendientes (${pendingReviews.length})</h3>
+          ${pendingReviews.length === 0 ? '<p style="color:#94a3b8;">Ninguna</p>' : 
+            pendingReviews.map(r => `
+              <div class="review-item">
+                <div class="review-info">
+                  <div>🔗 ${r.link}</div>
+                  <div class="review-meta">Enviada: ${formatDate(r.timestamp)}</div>
+                </div>
+                <div class="review-actions">
+                  <button class="approve" onclick="aprobarResena('${r.id}', '${uid}')">✅ Aprobar</button>
+                  <button class="reject" onclick="rechazarResena('${r.id}', '${uid}')">❌ Rechazar</button>
+                </div>
               </div>
-            </div>
-          `).join('')}
+            `).join('')
+          }
+        </div>
+
+        <div class="detail-card">
+          <h3>✅ Reseñas aprobadas (${approvedReviews.length})</h3>
+          ${approvedReviews.length === 0 ? '<p style="color:#94a3b8;">Ninguna</p>' : 
+            approvedReviews.map(r => `
+              <div class="review-item">
+                <div class="review-info">
+                  <div>🔗 ${r.link}</div>
+                  <div class="review-meta">Aprobada: ${formatDate(r.timestamp)}</div>
+                </div>
+                <span class="badge approved">Aprobada</span>
+              </div>
+            `).join('')
+          }
+        </div>
+
+        <div class="detail-card">
+          <h3>❌ Reseñas rechazadas (${rejectedReviews.length})</h3>
+          ${rejectedReviews.length === 0 ? '<p style="color:#94a3b8;">Ninguna</p>' : 
+            rejectedReviews.map(r => `
+              <div class="review-item">
+                <div class="review-info">
+                  <div>🔗 ${r.link}</div>
+                  <div class="review-meta">Rechazada: ${formatDate(r.timestamp)}</div>
+                </div>
+                <span class="badge rejected">Rechazada</span>
+              </div>
+            `).join('')
+          }
         </div>
       `;
+
       detailArea.innerHTML = html;
     }
 
+    // Funciones globales para los botones
     window.modificarSaldo = async function(uid, action) {
-      const amount = parseFloat(document.getElementById('amountInput').value);
+      const amountInput = document.getElementById('amountInput');
+      const amount = parseFloat(amountInput.value);
       if (isNaN(amount) && action !== 'set') return alert('Introduce una cantidad válida');
+      
       const userRef = db.ref('users/' + uid);
       const snap = await userRef.once('value');
       const data = snap.val();
       let newBalance = data.balance || 0;
+      
       if (action === 'add') newBalance += amount;
       else if (action === 'subtract') newBalance = Math.max(0, newBalance - amount);
       else if (action === 'set') newBalance = amount;
+      
       await userRef.update({ balance: newBalance });
-      alert('Saldo actualizado');
-      seleccionarUsuario(uid, {...data, balance: newBalance});
+      alert(`Saldo actualizado a ${newBalance.toFixed(2)} €`);
+      // Refrescar los datos
+      seleccionarUsuario(uid, { ...data, balance: newBalance });
     };
 
     window.aprobarResena = async function(reviewId, uid) {
@@ -137,19 +205,22 @@
       const newCount = (data.reviewCount || 0) + 1;
       await userRef.update({ balance: newBalance, reviewCount: newCount });
       alert('Reseña aprobada (+0,40€)');
-      mostrarDetalle(uid, {...data, balance: newBalance, reviewCount: newCount});
+      // Refrescar vista
+      seleccionarUsuario(uid, { ...data, balance: newBalance, reviewCount: newCount });
     };
 
     window.rechazarResena = async function(reviewId, uid) {
       await db.ref('reviews/' + reviewId).update({ status: 'rejected' });
       const userRef = db.ref('users/' + uid);
-      await userRef.update({ balance: 0, lastRejected: true });
-      alert('Reseña rechazada. El saldo del usuario se ha puesto a 0€ y recibirá una notificación.');
       const snap = await userRef.once('value');
-      mostrarDetalle(uid, snap.val());
+      const data = snap.val();
+      // Poner saldo a 0 y activar notificación
+      await userRef.update({ balance: 0, lastRejected: true });
+      alert('Reseña rechazada. Saldo a 0€ y notificación enviada al usuario.');
+      seleccionarUsuario(uid, { ...data, balance: 0 });
     };
 
-    // Arrancar directamente
+    // Arranque automático
     cargarUsuarios();
   </script>
 </body>
